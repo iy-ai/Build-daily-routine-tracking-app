@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ルーティントラッカー（案２ v2）</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', 'Hiragino Sans', sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; }
+
+  /* トップバー */
+  .topbar {
+    background: linear-gradient(135deg, #1a1d2e 0%, #16213e 100%);
+    padding: 20px 28px;
+    border-bottom: 1px solid #2d3561;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
+  }
+  .logo { font-size: 1.3rem; font-weight: 800; background: linear-gradient(90deg, #7c83fd, #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .logo-sub { font-size: 0.72rem; color: #64748b; margin-top: 2px; }
+
+  /* ダッシュボードカード */
+  .dashboard {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 14px;
+    padding: 20px 28px 0;
+  }
+  .stat-card {
+    background: linear-gradient(135deg, #1e2235, #252a3d);
+    border: 1px solid #2d3561;
+    border-radius: 14px;
+    padding: 16px;
+    text-align: center;
+    transition: transform 0.2s;
+  }
+  .stat-card:hover { transform: translateY(-2px); }
+  .stat-card .icon { font-size: 1.6rem; margin-bottom: 6px; }
+  .stat-card .label { font-size: 0.72rem; color: #64748b; letter-spacing: 0.04em; }
+  .stat-card .value { font-size: 1.8rem; font-weight: 800; margin: 4px 0; }
+  .stat-card .sub { font-size: 0.7rem; color: #64748b; }
+  .fire { color: #ff9f43; }
+  .blue { color: #7c83fd; }
+  .green { color: #55efc4; }
+  .purple { color: #a78bfa; }
+
+  /* リング */
+  .ring-wrap { position: relative; width: 60px; height: 60px; margin: 0 auto 4px; }
+  .ring-wrap svg { transform: rotate(-90deg); }
+  .ring-bg { fill: none; stroke: #2d3561; stroke-width: 6; }
+  .ring-fill { fill: none; stroke-width: 6; stroke-linecap: round; transition: stroke-dashoffset 0.8s ease; }
+
+  /* タブ */
+  .tabs {
+    display: flex;
+    gap: 0;
+    padding: 0;
+    margin-bottom: 16px;
+    border-bottom: 1px solid #2d3561;
+  }
+  .tab {
+    padding: 10px 22px;
+    font-size: 0.82rem;
+    color: #64748b;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+    font-weight: 600;
+  }
+  .tab.active { color: #7c83fd; border-bottom-color: #7c83fd; }
+  .tab:hover:not(.active) { color: #94a3b8; }
+
+  /* メインコンテンツ */
+  .content { padding: 20px 28px; }
+
+  /* タイミングバッジ */
+  .timing-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+  }
+  .timing-朝    { background: rgba(124,131,253,0.2); color: #7c83fd; border: 1px solid rgba(124,131,253,0.4); }
+  .timing-日中  { background: rgba(255,211,42,0.15); color: #ffd32a; border: 1px solid rgba(255,211,42,0.35); }
+  .timing-睡眠前 { background: rgba(167,139,250,0.2); color: #a78bfa; border: 1px solid rgba(167,139,250,0.4); }
+
+  /* ヒートマップ */
+  .heatmap-view.active { display: block; }
+  .heatmap-view { display: none; }
+  .heatmap-grid { display: grid; gap: 4px; }
+  .heatmap-row { display: flex; gap: 6px; align-items: center; }
+  .heatmap-timing-col {
+    width: 62px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .heatmap-label {
+    font-size: 0.78rem;
+    color: #cbd5e0;
+    width: 195px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex-shrink: 0;
+  }
+  .heatmap-cells { display: flex; gap: 4px; }
+  .heatmap-cell {
+    width: 22px; height: 22px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: transform 0.1s, opacity 0.2s;
+    flex-shrink: 0;
+  }
+  .heatmap-cell:hover { transform: scale(1.3); z-index: 10; position: relative; }
+  .heatmap-cell.level-0 { background: #1e2235; border: 1px solid #2d3561; }
+  .heatmap-cell.level-4 { background: #55efc4; }
+  .heatmap-cell.future { background: #161928; opacity: 0.4; cursor: default; }
+  .heatmap-cell.today-ring { outline: 2px solid #7c83fd; outline-offset: 1px; }
+
+  .date-header-row {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 6px;
+    align-items: center;
+  }
+  .date-header-spacer { width: calc(62px + 195px + 6px); flex-shrink: 0; }
+  .date-header-cells { display: flex; gap: 4px; }
+  .date-header-item {
+    width: 22px;
+    font-size: 0.6rem;
+    color: #4a5568;
+    text-align: center;
+    flex-shrink: 0;
+  }
+  .date-header-item.today-h { color: #7c83fd; font-weight: 700; }
+
+  .category-divider {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 10px 0 6px;
+  }
+  .category-divider-label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: #94a3b8;
+  }
+  .category-divider-line {
+    flex: 1;
+    height: 1px;
+    background: #2d3561;
+  }
+
+  /* テーブルビュー */
+  .table-view { display: none; }
+  .table-view.active { display: block; }
+
+  table.rich-table {
+    border-collapse: collapse;
+    background: #1a1d2e;
+    border-radius: 12px;
+    overflow: hidden;
+    width: 100%;
+    min-width: 650px;
+  }
+  .rich-table th {
+    background: #1e2235;
+    font-size: 0.72rem;
+    color: #64748b;
+    padding: 10px 8px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    border-bottom: 1px solid #2d3561;
+    white-space: nowrap;
+  }
+  .rich-table td {
+    border: 1px solid #1e2744;
+    text-align: center;
+    padding: 0;
+    vertical-align: middle;
+  }
+  .rich-table .r-timing {
+    text-align: center;
+    padding: 6px 8px !important;
+    background: #1e2235;
+    position: sticky;
+    left: 0;
+    width: 68px;
+    min-width: 68px;
+    border-right: 1px solid #2d3561 !important;
+    z-index: 2;
+  }
+  .rich-table .r-label {
+    text-align: left;
+    padding: 8px 12px !important;
+    font-size: 0.8rem;
+    color: #cbd5e0;
+    background: #1e2235;
+    position: sticky;
+    left: 68px;
+    min-width: 200px;
+    border-right: 1px solid #2d3561 !important;
+    z-index: 2;
+  }
+  .rich-table .cat-row td {
+    background: #16213e;
+    color: #94a3b8;
+    font-size: 0.73rem;
+    font-weight: 700;
+    padding: 7px 14px !important;
+    text-align: left;
+    position: sticky;
+    left: 0;
+    letter-spacing: 0.05em;
+    border-bottom: 1px solid #2d3561;
+    z-index: 3;
+  }
+  .rich-check {
+    width: 32px; min-width: 32px; height: 38px;
+    cursor: pointer;
+    transition: background 0.15s;
+    font-size: 0.9rem;
+  }
+  .rich-check:hover { background: #2d3561; }
+  .rich-check.checked { background: #1a3a2a; }
+  .rich-check.today-c { background: #1e2744; }
+  .rich-check.today-c.checked { background: #1a3a2a; }
+  .rich-check.future { opacity: 0.3; cursor: default; }
+  .rich-check .ci::before { content: '○'; color: #3a4a6b; font-size: 0.85rem; }
+  .rich-check.checked .ci::before { content: '✓'; color: #55efc4; font-weight: 700; font-size: 1rem; }
+  .rich-check.future .ci::before { content: '·'; color: #3a4a6b; }
+
+  /* 週間バー */
+  .week-progress { margin-bottom: 24px; }
+  .section-title { font-size: 0.82rem; color: #94a3b8; font-weight: 700; letter-spacing: 0.08em; margin-bottom: 12px; text-transform: uppercase; }
+  .week-day-bars { display: flex; gap: 6px; align-items: flex-end; height: 80px; }
+  .week-bar-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%; justify-content: flex-end; }
+  .week-bar-bg { width: 100%; background: #1e2235; border-radius: 6px 6px 0 0; display: flex; align-items: flex-end; overflow: hidden; }
+  .week-bar-fill { width: 100%; background: linear-gradient(180deg, #7c83fd, #a78bfa); border-radius: 6px 6px 0 0; transition: height 0.8s ease; min-height: 4px; }
+  .week-bar-fill.today-bar { background: linear-gradient(180deg, #55efc4, #00b894); }
+  .week-bar-label { font-size: 0.65rem; color: #64748b; }
+  .week-bar-val { font-size: 0.65rem; color: #94a3b8; }
+
+  /* 月ナビ */
+  .month-nav-row { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+  .month-nav-row button {
+    background: #1e2235; border: 1px solid #2d3561; color: #94a3b8;
+    width: 30px; height: 30px; border-radius: 50%; font-size: 0.9rem;
+    cursor: pointer; transition: background 0.2s;
+  }
+  .month-nav-row button:hover { background: #2d3561; }
+  .month-nav-row span { font-size: 1rem; font-weight: 700; color: #e2e8f0; }
+
+  /* 凡例 */
+  .legend { display: flex; gap: 8px; align-items: center; margin-top: 12px; font-size: 0.72rem; color: #64748b; flex-wrap: wrap; }
+  .legend-swatch { width: 14px; height: 14px; border-radius: 3px; }
+
+  /* ツールチップ */
+  .tooltip {
+    position: fixed; background: #1e2235; border: 1px solid #2d3561;
+    border-radius: 8px; padding: 8px 12px; font-size: 0.75rem; color: #e2e8f0;
+    pointer-events: none; z-index: 1000; display: none;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  }
+
+  .footer { text-align: center; padding: 24px; font-size: 0.72rem; color: #3a4a6b; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div>
+    <div class="logo">✦ RoutineOS</div>
+    <div class="logo-sub">10年後の自分をつくる、毎日の習慣管理</div>
+  </div>
+</div>
+
+<!-- ダッシュボード -->
+<div class="dashboard">
+  <div class="stat-card">
+    <div class="icon">🔥</div>
+    <div class="label">連続達成</div>
+    <div class="value fire" id="d-streak">0<span style="font-size:1rem">日</span></div>
+    <div class="sub">ストリーク</div>
+  </div>
+  <div class="stat-card">
+    <div class="ring-wrap">
+      <svg viewBox="0 0 60 60" width="60" height="60">
+        <circle class="ring-bg" cx="30" cy="30" r="24"/>
+        <circle class="ring-fill" cx="30" cy="30" r="24" id="todayRing"
+          stroke="#7c83fd" stroke-dasharray="150.8" stroke-dashoffset="150.8"/>
+      </svg>
+      <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:0.8rem;font-weight:800;color:#7c83fd" id="d-today-pct">0%</div>
+    </div>
+    <div class="label">今日の達成率</div>
+    <div class="sub" id="d-today-frac">0/10 完了</div>
+  </div>
+  <div class="stat-card">
+    <div class="icon">📅</div>
+    <div class="label">今月の達成率</div>
+    <div class="value green" id="d-month-rate">－</div>
+    <div class="sub">月間パフォーマンス</div>
+  </div>
+  <div class="stat-card">
+    <div class="icon">⚠️</div>
+    <div class="label">今週の弱点</div>
+    <div class="value purple" style="font-size:0.82rem;line-height:1.3" id="d-weak">計算中...</div>
+    <div class="sub">改善ポイント</div>
+  </div>
+</div>
+
+<div class="content">
+  <!-- 週間バーグラフ -->
+  <div class="week-progress">
+    <div class="section-title">今週の達成状況</div>
+    <div class="week-day-bars" id="weekBars"></div>
+  </div>
+
+  <!-- タブ -->
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('heatmap',this)">🗓 ヒートマップ</div>
+    <div class="tab" onclick="switchTab('table',this)">📋 テーブル</div>
+  </div>
+
+  <!-- 月ナビ -->
+  <div class="month-nav-row">
+    <button onclick="changeMonth(-1)">◀</button>
+    <span id="monthLabel"></span>
+    <button onclick="changeMonth(1)">▶</button>
+  </div>
+
+  <!-- ヒートマップビュー -->
+  <div class="heatmap-view active" id="heatmapView">
+    <div class="section-title">ルーティン別 達成ヒートマップ</div>
+    <div class="date-header-row">
+      <div class="date-header-spacer"></div>
+      <div class="date-header-cells" id="dateHeader"></div>
+    </div>
+    <div class="heatmap-grid" id="heatmapGrid"></div>
+    <div class="legend">
+      <span>達成率：</span>
+      <div class="legend-swatch" style="background:#1e2235;border:1px solid #2d3561;"></div><span>未達成</span>
+      <div class="legend-swatch" style="background:#55efc4;"></div><span>達成</span>
+      <span style="margin-left:12px;">タイミング：</span>
+      <span class="timing-badge timing-朝">朝</span>
+      <span class="timing-badge timing-日中">日中</span>
+      <span class="timing-badge timing-睡眠前">睡眠前</span>
+    </div>
+  </div>
+
+  <!-- テーブルビュー -->
+  <div class="table-view" id="tableView">
+    <div class="section-title">チェックテーブル</div>
+    <div style="overflow-x:auto;">
+      <table class="rich-table" id="richTable">
+        <thead id="richHead"></thead>
+        <tbody id="richBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="tooltip" id="tooltip"></div>
+<div class="footer">データはブラウザに自動保存 · RoutineOS v2.0</div>
+
+<script>
+// ─────────────────────────────────────────────
+//  ルーティン定義（修正版）
+// ─────────────────────────────────────────────
+const ROUTINES = [
+  {
+    category: '🌄 朝のルーティン',
+    timing: '朝',
+    color: '#7c83fd',
+    items: [
+      'スケジュール・タスク・メールチェック',
+      '週末の予定',
+      'ランニング30〜40分（5:30起床目標）',
+      'アプリ・ブログ作成',
+      '試験勉強（簿記3級など）',          // ← 追加
+    ]
+  },
+  {
+    category: '🌞 日中のルーティン',
+    timing: '日中',
+    color: '#ffd32a',
+    items: [
+      '腕・肩甲骨まわし（肘から回す）',
+      '左腕を重点的に回す',
+    ]
+  },
+  {
+    category: '🌙 睡眠前ルーティン',      // ← 睡眠時→睡眠前
+    timing: '睡眠前',
+    color: '#a78bfa',
+    items: [
+      '7時間睡眠の確保',
+      '寝る前に深呼吸・体の脱力',
+      '仰向けで就寝',
+      '翌朝の準備（ランニング服・靴下・ティッシュ・Bluetoothイヤホン・ポケットタオル・パックごはん）', // ← 追加
+    ]
+  },
+];
+
+const DAYS_JP = ['日','月','火','水','木','金','土'];
+let currentYear, currentMonth;
+let checkData = {};
+
+function getToday() {
+  const t = new Date();
+  return `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`;
+}
+function loadData()  { try { checkData = JSON.parse(localStorage.getItem('routineDataV2') || '{}'); } catch(e) { checkData = {}; } }
+function saveLocal() { localStorage.setItem('routineDataV2', JSON.stringify(checkData)); }
+
+function switchTab(tab, el) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('heatmapView').classList.toggle('active', tab === 'heatmap');
+  document.getElementById('tableView').classList.toggle('active',  tab === 'table');
+  if (tab === 'table') buildTable();
+}
+
+// ─── ヒートマップ ───────────────────────────────
+function buildHeatmap() {
+  const todayStr = getToday();
+  const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+
+  // 日付ヘッダー
+  let dh = '';
+  for (let d = 1; d <= daysInMonth; d++) {
+    const ds = fmtDate(d);
+    dh += `<div class="date-header-item ${ds === todayStr ? 'today-h' : ''}">${d}</div>`;
+  }
+  document.getElementById('dateHeader').innerHTML = dh;
+
+  let html = '';
+  ROUTINES.forEach(cat => {
+    // カテゴリ区切り線
+    html += `<div class="category-divider">
+      <span class="category-divider-label">${cat.category}</span>
+      <div class="category-divider-line"></div>
+    </div>`;
+
+    cat.items.forEach(item => {
+      html += `<div class="heatmap-row">
+        <div class="heatmap-timing-col">
+          <span class="timing-badge timing-${cat.timing}">${cat.timing}</span>
+        </div>
+        <div class="heatmap-label" title="${item}">${item}</div>
+        <div class="heatmap-cells">`;
+
+      for (let d = 1; d <= daysInMonth; d++) {
+        const ds = fmtDate(d);
+        const isFuture  = ds > todayStr;
+        const isToday   = ds === todayStr;
+        const isChecked = checkData[ds] && checkData[ds][item];
+        const cls = ['heatmap-cell',
+          isFuture ? 'future' : (isChecked ? 'level-4' : 'level-0'),
+          isToday ? 'today-ring' : ''
+        ].filter(Boolean).join(' ');
+        const tip = `${ds}【${cat.timing}】${item}：${isChecked ? '✓ 達成' : (isFuture ? '未来' : '未達成')}`;
+        const onclick = isFuture ? '' : `toggleHeatmap('${ds}','${esc(item)}',this)`;
+        html += `<div class="${cls}" onclick="${onclick}" data-tip="${tip}"></div>`;
+      }
+      html += `</div></div>`;
+    });
+  });
+
+  document.getElementById('heatmapGrid').innerHTML = html;
+
+  // ツールチップ
+  document.querySelectorAll('.heatmap-cell').forEach(c => {
+    c.addEventListener('mouseenter', e => {
+      const tip = document.getElementById('tooltip');
+      tip.textContent = c.getAttribute('data-tip');
+      tip.style.display = 'block';
+      reposTip(e);
+    });
+    c.addEventListener('mousemove', reposTip);
+    c.addEventListener('mouseleave', () => { document.getElementById('tooltip').style.display = 'none'; });
+  });
+}
+
+function reposTip(e) {
+  const tip = document.getElementById('tooltip');
+  tip.style.left = (e.clientX + 14) + 'px';
+  tip.style.top  = (e.clientY - 36) + 'px';
+}
+
+function toggleHeatmap(ds, item, cell) {
+  if (!checkData[ds]) checkData[ds] = {};
+  checkData[ds][item] = !checkData[ds][item];
+  cell.classList.toggle('level-4', !!checkData[ds][item]);
+  cell.classList.toggle('level-0', !checkData[ds][item]);
+  cell.setAttribute('data-tip', cell.getAttribute('data-tip').replace(/：.*$/, `：${checkData[ds][item] ? '✓ 達成' : '未達成'}`));
+  saveLocal();
+  updateDashboard();
+}
+
+// ─── テーブルビュー ──────────────────────────────
+function buildTable() {
+  const todayStr = getToday();
+  const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+
+  let headHTML = '<tr>'
+    + '<th style="position:sticky;left:0;z-index:4;background:#1e2235;min-width:68px;">タイミング</th>'
+    + '<th style="position:sticky;left:68px;z-index:4;background:#1e2235;min-width:200px;text-align:left;">ルーティン</th>';
+  for (let d = 1; d <= daysInMonth; d++) {
+    const ds = fmtDate(d);
+    const dow = new Date(currentYear, currentMonth, d).getDay();
+    headHTML += `<th style="min-width:30px;${ds === todayStr ? 'color:#7c83fd' : ''}">
+      ${d}<br><span style="font-size:0.6rem">${DAYS_JP[dow]}</span></th>`;
+  }
+  headHTML += '</tr>';
+  document.getElementById('richHead').innerHTML = headHTML;
+
+  let bodyHTML = '';
+  ROUTINES.forEach(cat => {
+    bodyHTML += `<tr class="cat-row"><td colspan="${daysInMonth + 2}">${cat.category}</td></tr>`;
+    cat.items.forEach(item => {
+      bodyHTML += '<tr>';
+      bodyHTML += `<td class="r-timing"><span class="timing-badge timing-${cat.timing}">${cat.timing}</span></td>`;
+      bodyHTML += `<td class="r-label">${item}</td>`;
+      for (let d = 1; d <= daysInMonth; d++) {
+        const ds = fmtDate(d);
+        const isFuture  = ds > todayStr;
+        const isToday   = ds === todayStr;
+        const isChecked = checkData[ds] && checkData[ds][item];
+        const cls = ['rich-check', isToday ? 'today-c' : '', isFuture ? 'future' : '', isChecked ? 'checked' : ''].filter(Boolean).join(' ');
+        const onclick = isFuture ? '' : `toggleTable('${ds}','${esc(item)}',this)`;
+        bodyHTML += `<td class="${cls}" onclick="${onclick}"><span class="ci"></span></td>`;
+      }
+      bodyHTML += '</tr>';
+    });
+  });
+  document.getElementById('richBody').innerHTML = bodyHTML;
+}
+
+function toggleTable(ds, item, cell) {
+  if (!checkData[ds]) checkData[ds] = {};
+  checkData[ds][item] = !checkData[ds][item];
+  cell.classList.toggle('checked', !!checkData[ds][item]);
+  saveLocal();
+  updateDashboard();
+}
+
+// ─── ダッシュボード更新 ──────────────────────────
+function updateDashboard() {
+  const todayStr = getToday();
+  const allItems = ROUTINES.flatMap(c => c.items);
+
+  // 今日
+  const todayData    = checkData[todayStr] || {};
+  const todayChecked = allItems.filter(i => todayData[i]).length;
+  const todayTotal   = allItems.length;
+  const todayPct     = Math.round(todayChecked / todayTotal * 100);
+  document.getElementById('d-today-pct').textContent  = todayPct + '%';
+  document.getElementById('d-today-frac').textContent = `${todayChecked}/${todayTotal} 完了`;
+  const circumference = 150.8;
+  document.getElementById('todayRing').style.strokeDashoffset = circumference - (circumference * todayPct / 100);
+
+  // 月間
+  const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+  let total = 0, checked = 0;
+  for (let d = 1; d <= daysInMonth; d++) {
+    const ds = fmtDate(d);
+    if (ds > todayStr) continue;
+    allItems.forEach(i => { total++; if (checkData[ds] && checkData[ds][i]) checked++; });
+  }
+  document.getElementById('d-month-rate').textContent = total > 0 ? `${Math.round(checked / total * 100)}%` : '－';
+
+  // ストリーク
+  let streak = 0;
+  const d = new Date();
+  while (true) {
+    const ds = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    if (ds > todayStr) { d.setDate(d.getDate()-1); continue; }
+    const dd = checkData[ds] || {};
+    if (!allItems.some(i => dd[i])) break;
+    streak++;
+    d.setDate(d.getDate()-1);
+    if (streak > 365) break;
+  }
+  document.getElementById('d-streak').innerHTML = streak + '<span style="font-size:1rem">日</span>';
+
+  // 弱点
+  const scores = {};
+  allItems.forEach(item => { scores[item] = { done: 0, total: 0 }; });
+  for (let dd = 1; dd <= daysInMonth; dd++) {
+    const ds = fmtDate(dd);
+    if (ds > todayStr) continue;
+    allItems.forEach(i => { scores[i].total++; if (checkData[ds] && checkData[ds][i]) scores[i].done++; });
+  }
+  const weakest = allItems.reduce((a, b) => {
+    const ra = scores[a].total ? scores[a].done / scores[a].total : 1;
+    const rb = scores[b].total ? scores[b].done / scores[b].total : 1;
+    return ra <= rb ? a : b;
+  });
+  const weakRate = scores[weakest].total ? Math.round(scores[weakest].done / scores[weakest].total * 100) : 0;
+  document.getElementById('d-weak').textContent = `${weakest.substring(0,10)}…(${weakRate}%)`;
+
+  buildWeekBars();
+}
+
+function buildWeekBars() {
+  const today    = new Date();
+  const todayStr = getToday();
+  const allItems = ROUTINES.flatMap(c => c.items);
+  const dow      = today.getDay();
+  let html = '';
+  for (let i = 0; i < 7; i++) {
+    const d  = new Date(today);
+    d.setDate(today.getDate() - dow + i);
+    const ds       = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const isFuture = ds > todayStr;
+    const isToday  = ds === todayStr;
+    let pct = 0;
+    if (!isFuture) {
+      const done = allItems.filter(i => checkData[ds] && checkData[ds][i]).length;
+      pct = Math.round(done / allItems.length * 100);
+    }
+    const barH = isFuture ? 4 : Math.max(4, pct * 0.7);
+    html += `<div class="week-bar-wrap">
+      <div class="week-bar-val">${isFuture ? '' : pct + '%'}</div>
+      <div class="week-bar-bg" style="height:70px">
+        <div class="week-bar-fill ${isToday ? 'today-bar' : ''}" style="height:${barH}px"></div>
+      </div>
+      <div class="week-bar-label" style="${isToday ? 'color:#7c83fd;font-weight:700' : ''}">${DAYS_JP[d.getDay()]}</div>
+    </div>`;
+  }
+  document.getElementById('weekBars').innerHTML = html;
+}
+
+function changeMonth(delta) {
+  currentMonth += delta;
+  if (currentMonth > 11) { currentMonth = 0; currentYear++; }
+  if (currentMonth <  0) { currentMonth = 11; currentYear--; }
+  document.getElementById('monthLabel').textContent = `${currentYear}年 ${currentMonth+1}月`;
+  buildHeatmap();
+  if (document.getElementById('tableView').classList.contains('active')) buildTable();
+}
+
+// ─── ユーティリティ ─────────────────────────────
+function fmtDate(d) {
+  return `${currentYear}-${String(currentMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+}
+function esc(s) { return s.replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
+
+// ─── 初期化 ────────────────────────────────────
+loadData();
+const now = new Date();
+currentYear  = now.getFullYear();
+currentMonth = now.getMonth();
+document.getElementById('monthLabel').textContent = `${currentYear}年 ${currentMonth+1}月`;
+buildHeatmap();
+updateDashboard();
+</script>
+</body>
+</html>
