@@ -109,8 +109,12 @@
   .date-header-row { display: flex; gap: 6px; margin-bottom: 6px; align-items: center; }
   .date-header-spacer { width: calc(62px + 195px + 6px); flex-shrink: 0; }
   .date-header-cells { display: flex; gap: 4px; }
-  .date-header-item { width: 22px; font-size: 0.6rem; color: #4a5568; text-align: center; flex-shrink: 0; }
+  .date-header-item { width: 22px; font-size: 0.6rem; color: #4a5568; text-align: center; flex-shrink: 0; line-height: 1.4; }
   .date-header-item.today-h { color: #7c83fd; font-weight: 700; }
+  .date-header-item .dow { font-size: 0.58rem; }
+  .date-header-item .dow.sun { color: #e17055; }
+  .date-header-item .dow.sat { color: #74b9ff; }
+  .date-header-item.today-h .dow { color: #7c83fd; }
 
   .category-divider { display: flex; align-items: center; gap: 8px; margin: 10px 0 6px; }
   .category-divider-label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em; color: #94a3b8; }
@@ -483,8 +487,12 @@ function buildHeatmap() {
 
   let dh = '';
   for (let d = 1; d <= daysInMonth; d++) {
-    const ds = fmtDate(d);
-    dh += `<div class="date-header-item ${ds === todayStr ? 'today-h' : ''}">${d}</div>`;
+    const ds  = fmtDate(d);
+    const dow = new Date(currentYear, currentMonth, d).getDay();
+    const dowClass = dow === 0 ? 'sun' : dow === 6 ? 'sat' : '';
+    dh += `<div class="date-header-item ${ds === todayStr ? 'today-h' : ''}">
+      ${d}<br><span class="dow ${dowClass}">${DAYS_JP[dow]}</span>
+    </div>`;
   }
   document.getElementById('dateHeader').innerHTML = dh;
 
