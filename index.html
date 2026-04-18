@@ -302,8 +302,15 @@ function showApp()      { document.getElementById('loginScreen').classList.remov
 // ════════════════════════════════════════
 (async () => {
   showLoading(true);
+  // 5秒でタイムアウト→必ずログイン画面を表示
+  const timer = setTimeout(() => { showLoading(false); showLogin(); }, 5000);
   try {
-    const { data: { session } } = await sb.auth.getSession();
+    const result = await Promise.race([
+      sb.auth.getSession(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 4500))
+    ]);
+    clearTimeout(timer);
+    const session = result.data ? result.data.session : null;
     if (session) {
       currentUser = session.user;
       document.getElementById('userEmailLabel').textContent = currentUser.email;
@@ -314,7 +321,7 @@ function showApp()      { document.getElementById('loginScreen').classList.remov
       showLogin();
     }
   } catch(e) {
-    console.error('起動エラー:', e);
+    clearTimeout(timer);
     showLogin();
   } finally {
     showLoading(false);
