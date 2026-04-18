@@ -368,12 +368,36 @@ async function handleAuth() {
   btn.disabled = true; btn.textContent = '処理中...';
 
   if (loginMode === 'login') {
-    const { error } = await sb.auth.signInWithPassword({ email, password: pass });
-    if (error) showErr('ログイン失敗：' + error.message);
+    const { data, error } = await sb.auth.signInWithPassword({ email, password: pass });
+    if (error) {
+      showErr('ログイン失敗：' + error.message);
+      btn.disabled = false; btn.textContent = 'ログイン';
+    } else if (data && data.session) {
+      // ログイン成功→直接画面切替
+      currentUser = data.session.user;
+      document.getElementById('userEmailLabel').textContent = currentUser.email;
+      await loadFromSupabase();
+      showApp();
+      initApp();
+      return; // ボタン復元不要
+    }
   } else {
-    const { error } = await sb.auth.signUp({ email, password: pass });
-    if (error) showErr('登録失敗：' + error.message);
-    else { const el = document.getElementById('msgOk'); el.textContent = '確認メールを送信しました。メール内のリンクをクリックしてから再度ログインしてください。'; el.style.display = 'block'; }
+    const { data, error } = await sb.auth.signUp({ email, password: pass });
+    if (error) {
+      showErr('登録失敗：' + error.message);
+    } else if (data && data.session) {
+      // メール確認不要の場合はそのままログイン
+      currentUser = data.session.user;
+      document.getElementById('userEmailLabel').textContent = currentUser.email;
+      await loadFromSupabase();
+      showApp();
+      initApp();
+      return;
+    } else {
+      const el = document.getElementById('msgOk');
+      el.textContent = '登録しました。ログインタブからログインしてください。';
+      el.style.display = 'block';
+    }
   }
   btn.disabled = false; btn.textContent = loginMode === 'login' ? 'ログイン' : '新規登録';
 }
