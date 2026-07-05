@@ -412,20 +412,36 @@ async function handleLogout() {
 // ════════════════════════════════════════
 //  Supabase データ
 // ════════════════════════════════════════
+// 読込に失敗した場合、空の checkData でクラウドを上書きしないよう保存を禁止する
+let loadFailed = false;
+
 async function loadFromSupabase() {
   if (!currentUser) return;
-  try {
-    const { data } = await sb.from('user_checks').select('checks').eq('user_id', currentUser.id).maybeSingle();
-    if (data && data.checks) checkData = data.checks;
-  } catch(e) { console.warn('データ読込エラー:', e); }
+  loadFailed = false;
+  // Supabase v2 は例外を投げず { error } を返すため、必ず error を検査する
+  const { data, error } = await sb.from('user_checks').select('checks').eq('user_id', currentUser.id).maybeSingle();
+  if (error) {
+    loadFailed = true;
+    console.error('データ読込エラー:', error);
+    flashSync('⚠️ データ読込失敗。保存を無効化しました。ページを再読み込みしてください', true);
+    return;
+  }
+  if (data && data.checks) checkData = data.checks;
 }
 
 async function saveToSupabase() {
   if (!currentUser) return;
-  try {
-    await sb.from('user_checks').upsert({ user_id: currentUser.id, checks: checkData, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
-    flashSync('☁️ 保存しました', false);
-  } catch(e) { flashSync('⚠️ 保存失敗', true); }
+  if (loadFailed) {
+    flashSync('⚠️ 読込失敗のため保存できません。ページを再読み込みしてください', true);
+    return;
+  }
+  const { error } = await sb.from('user_checks').upsert({ user_id: currentUser.id, checks: checkData, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+  if (error) {
+    console.error('保存エラー:', error);
+    flashSync('⚠️ 保存失敗', true);
+    return;
+  }
+  flashSync('☁️ 保存しました', false);
 }
 
 function flashSync(msg, isErr) {
@@ -433,7 +449,8 @@ function flashSync(msg, isErr) {
   el.textContent = msg;
   el.style.color = isErr ? '#fca5a5' : '#55efc4';
   el.classList.add('show');
-  setTimeout(() => el.classList.remove('show'), 2000);
+  // エラーは気づけるよう長めに表示する
+  setTimeout(() => el.classList.remove('show'), isErr ? 8000 : 2000);
 }
 
 function scheduleSave() {
