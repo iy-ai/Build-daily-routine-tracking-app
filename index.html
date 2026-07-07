@@ -264,25 +264,42 @@ const SUPABASE_URL = 'https://wzwsfoluztgqbflzpyot.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind6d3Nmb2x1enRncWJmbHpweW90Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY0ODI1NjcsImV4cCI6MjA5MjA1ODU2N30.3wWYOgrfyN0GlQM5fRr7RQMO4kLqGas4_VOP0JWgVCc';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+// 各項目は安定ID（id）で記録する。文言（label）を変更しても過去の記録は消えない
 const ROUTINES = [
   { category: '🌄 朝のルーティン', timing: '朝', items: [
-    'スケジュール・タスク・メールチェック',
-    '週末の予定',
-    'ランニング30〜40分（5:30起床目標）',
-    'アプリ・ブログ作成',
-    '試験勉強（簿記3級など）',
+    { id: 'm1', label: 'スケジュール・タスク・メールチェック' },
+    { id: 'm2', label: '週末の予定' },
+    { id: 'm3', label: 'ランニング30〜40分（5:30起床目標）' },
+    { id: 'm4', label: 'アプリ・ブログ作成' },
+    { id: 'm5', label: '試験勉強（簿記3級など）' },
   ]},
   { category: '🌞 日中のルーティン', timing: '日中', items: [
-    '腕・肩甲骨まわし（肘から回す）',
-    '左腕を重点的に回す',
+    { id: 'd1', label: '腕・肩甲骨まわし（肘から回す）' },
+    { id: 'd2', label: '左腕を重点的に回す' },
   ]},
   { category: '🌙 睡眠前ルーティン', timing: '睡眠前', items: [
-    '7時間睡眠の確保',
-    '寝る前に深呼吸・体の脱力',
-    '仰向けで就寝',
-    '翌朝の準備（ランニング服・靴下・ティッシュ・Bluetoothイヤホン・ポケットタオル・パックごはん）',
+    { id: 'n1', label: '7時間睡眠の確保' },
+    { id: 'n2', label: '寝る前に深呼吸・体の脱力' },
+    { id: 'n3', label: '仰向けで就寝' },
+    { id: 'n4', label: '翌朝の準備（ランニング服・靴下・ティッシュ・Bluetoothイヤホン・ポケットタオル・パックごはん）' },
   ]},
 ];
+
+// 旧データ（文言がキー）→ 安定ID への移行
+const LABEL_TO_ID = {};
+ROUTINES.forEach(c => c.items.forEach(it => { LABEL_TO_ID[it.label] = it.id; }));
+function migrateCheckData(data) {
+  const out = {};
+  for (const date in data) {
+    out[date] = {};
+    for (const key in data[date]) {
+      if (!data[date][key]) continue;
+      const id = LABEL_TO_ID[key] || key;  // 未知のキーは消さずそのまま保持
+      out[date][id] = true;
+    }
+  }
+  return out;
+}
 
 const DAYS_JP = ['日','月','火','水','木','金','土'];
 let currentYear, currentMonth;
@@ -426,7 +443,7 @@ async function loadFromSupabase() {
     flashSync('⚠️ データ読込失敗。保存を無効化しました。ページを再読み込みしてください', true);
     return;
   }
-  if (data && data.checks) checkData = data.checks;
+  if (data && data.checks) checkData = migrateCheckData(data.checks);
 }
 
 async function saveToSupabase() {
@@ -455,8 +472,17 @@ function flashSync(msg, isErr) {
 
 function scheduleSave() {
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(saveToSupabase, 800);
+  saveTimer = setTimeout(() => { saveTimer = null; saveToSupabase(); }, 800);
 }
+
+// タブを閉じる・切り替える直前に、保留中の保存を即時実行（デバウンス中のデータ消失防止）
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden' && saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+    saveToSupabase();
+  }
+});
 
 // ════════════════════════════════════════
 //  アプリ初期化
@@ -514,18 +540,18 @@ function buildHeatmap() {
     cat.items.forEach(function(item) {
       html += '<div class="heatmap-row">'
            + '<div class="heatmap-timing-col"><span class="timing-badge timing-' + cat.timing + '">' + cat.timing + '</span></div>'
-           + '<div class="heatmap-label" title="' + item + '">' + item + '</div>'
+           + '<div class="heatmap-label" title="' + item.label + '">' + item.label + '</div>'
            + '<div class="heatmap-cells">';
       for (let d = 1; d <= daysInMonth; d++) {
         const ds        = fmtDate(d);
         const isFuture  = ds > todayStr;
         const isToday   = ds === todayStr;
-        const isChecked = checkData[ds] && checkData[ds][item];
+        const isChecked = checkData[ds] && checkData[ds][item.id];
         const cls = 'heatmap-cell'
           + (isFuture ? ' future' : (isChecked ? ' level-4' : ' level-0'))
           + (isToday  ? ' today-ring' : '');
-        const tip     = ds + '【' + cat.timing + '】' + item + '：' + (isChecked ? '✓ 達成' : (isFuture ? '未来' : '未達成'));
-        const onclick = isFuture ? '' : "toggleHeatmap('" + ds + "','" + esc(item) + "',this)";
+        const tip     = ds + '【' + cat.timing + '】' + item.label + '：' + (isChecked ? '✓ 達成' : (isFuture ? '未来' : '未達成'));
+        const onclick = isFuture ? '' : "toggleHeatmap('" + ds + "','" + item.id + "',this)";
         html += '<div class="' + cls + '" onclick="' + onclick + '" data-tip="' + tip + '"></div>';
       }
       html += '</div></div>';
@@ -584,14 +610,14 @@ function buildTable() {
     cat.items.forEach(function(item) {
       bodyHTML += '<tr>'
                + '<td class="r-timing"><span class="timing-badge timing-' + cat.timing + '">' + cat.timing + '</span></td>'
-               + '<td class="r-label">' + item + '</td>';
+               + '<td class="r-label">' + item.label + '</td>';
       for (let d = 1; d <= daysInMonth; d++) {
         const ds        = fmtDate(d);
         const isFuture  = ds > todayStr;
         const isToday   = ds === todayStr;
-        const isChecked = checkData[ds] && checkData[ds][item];
+        const isChecked = checkData[ds] && checkData[ds][item.id];
         const cls    = 'rich-check' + (isToday ? ' today-c' : '') + (isFuture ? ' future' : '') + (isChecked ? ' checked' : '');
-        const onclick = isFuture ? '' : "toggleTable('" + ds + "','" + esc(item) + "',this)";
+        const onclick = isFuture ? '' : "toggleTable('" + ds + "','" + item.id + "',this)";
         bodyHTML += '<td class="' + cls + '" onclick="' + onclick + '"><span class="ci"></span></td>';
       }
       bodyHTML += '</tr>';
@@ -618,7 +644,7 @@ function updateDashboard() {
 
   // 今日
   const todayData    = checkData[todayStr] || {};
-  const todayChecked = allItems.filter(function(i){ return todayData[i]; }).length;
+  const todayChecked = allItems.filter(function(i){ return todayData[i.id]; }).length;
   const todayPct     = Math.round(todayChecked / allItems.length * 100);
   document.getElementById('d-today-pct').textContent  = todayPct + '%';
   document.getElementById('d-today-frac').textContent = todayChecked + '/' + allItems.length + ' 完了';
@@ -630,7 +656,7 @@ function updateDashboard() {
   for (var d = 1; d <= daysInMonth; d++) {
     const ds = fmtDate(d);
     if (ds > todayStr) continue;
-    allItems.forEach(function(i){ total++; if (checkData[ds] && checkData[ds][i]) done++; });
+    allItems.forEach(function(i){ total++; if (checkData[ds] && checkData[ds][i.id]) done++; });
   }
   document.getElementById('d-month-rate').textContent = total > 0 ? Math.round(done / total * 100) + '%' : '－';
 
@@ -640,26 +666,27 @@ function updateDashboard() {
     const ds2 = dd.getFullYear() + '-' + pad(dd.getMonth()+1) + '-' + pad(dd.getDate());
     if (ds2 > todayStr) { dd.setDate(dd.getDate()-1); continue; }
     const dayObj = checkData[ds2] || {};
-    if (!allItems.some(function(i){ return dayObj[i]; })) break;
+    if (!allItems.some(function(i){ return dayObj[i.id]; })) break;
     streak++; dd.setDate(dd.getDate()-1);
   }
   document.getElementById('d-streak').innerHTML = streak + '<span style="font-size:1rem">日</span>';
 
   // 弱点
   var scores = {};
-  allItems.forEach(function(item){ scores[item] = { done: 0, total: 0 }; });
+  allItems.forEach(function(item){ scores[item.id] = { done: 0, total: 0 }; });
   for (var d2 = 1; d2 <= daysInMonth; d2++) {
     const ds3 = fmtDate(d2);
     if (ds3 > todayStr) continue;
-    allItems.forEach(function(i){ scores[i].total++; if (checkData[ds3] && checkData[ds3][i]) scores[i].done++; });
+    allItems.forEach(function(i){ scores[i.id].total++; if (checkData[ds3] && checkData[ds3][i.id]) scores[i.id].done++; });
   }
   var weakest = allItems.reduce(function(a, b){
-    var ra = scores[a].total ? scores[a].done / scores[a].total : 1;
-    var rb = scores[b].total ? scores[b].done / scores[b].total : 1;
+    var ra = scores[a.id].total ? scores[a.id].done / scores[a.id].total : 1;
+    var rb = scores[b.id].total ? scores[b.id].done / scores[b.id].total : 1;
     return ra <= rb ? a : b;
   });
-  var weakRate = scores[weakest].total ? Math.round(scores[weakest].done / scores[weakest].total * 100) : 0;
-  document.getElementById('d-weak').textContent = weakest.substring(0, 10) + '…(' + weakRate + '%)';
+  var weakRate = scores[weakest.id].total ? Math.round(scores[weakest.id].done / scores[weakest.id].total * 100) : 0;
+  var weakLabel = weakest.label.length > 10 ? weakest.label.substring(0, 10) + '…' : weakest.label;
+  document.getElementById('d-weak').textContent = weakLabel + '(' + weakRate + '%)';
 
   buildWeekBars();
 }
@@ -674,7 +701,7 @@ function buildWeekBars() {
     const isFuture = ds4 > todayStr, isToday = ds4 === todayStr;
     var pct = 0;
     if (!isFuture) {
-      var cnt = allItems.filter(function(i2){ return checkData[ds4] && checkData[ds4][i2]; }).length;
+      var cnt = allItems.filter(function(i2){ return checkData[ds4] && checkData[ds4][i2.id]; }).length;
       pct = Math.round(cnt / allItems.length * 100);
     }
     var barH = isFuture ? 4 : Math.max(4, pct * 0.7);
